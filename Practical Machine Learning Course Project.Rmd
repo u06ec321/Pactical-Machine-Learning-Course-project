@@ -1,0 +1,136 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Bikash"
+date: "May 9, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+####SYNOPSIS
+People regularly quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har.  They have been very kind in allowing this data to be used for our Course assignment.
+
+The data consists of training and test sets with the training set containing 19,622 obseravtions of 160 variables and the test set consists of 20 observations for which we need to predict how well the exercise is done from our final model that we decide to choose.
+
+This "how well" measurement is done by the "classe" variable.
+
+Our goal as per the course project also includes:-
+
+1.Creating a report describing how we built our model,
+
+2.How we use cross validation, 
+
+3.What the expected out of sample error is,
+
+4.Why you made the choices you did.
+
+We start by including all the packages.
+
+```{r setup for library}
+suppressMessages(suppressWarnings(library(caret)))
+suppressMessages(suppressWarnings(library(rattle)))
+suppressMessages(suppressWarnings(library(rpart.plot)))
+suppressMessages(suppressWarnings(library(randomForest)))
+```
+
+
+We start by importing the Data , and removing the below variables:-
+
+a)The non-zero variance variables, and 
+
+b)Variables with over 80% of Data missing
+
+```{r code to remove variables,cache=TRUE}
+a<-NULL
+new_data<-read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",head=TRUE,as.is=TRUE)
+new_data<-new_data[,-(nzv(new_data))]
+for(i in 1:ncol(new_data)) 
+{if(nrow(new_data[is.na(new_data[,i]),])/nrow(new_data)>.8){
+a<-cbind(a,i)}
+}
+new_data<-new_data[,-c(a,1,2)]
+new_data$classe<-as.factor(new_data$classe)
+```
+
+
+We now partition the training data furthur into training and test sets:-
+
+```{r code to partition data,cache=TRUE}
+inTrain <- createDataPartition(y=new_data$classe, p=0.6,list=FALSE)
+myTraining <- new_data[inTrain, ]; myTesting <- new_data[-inTrain, ]
+dim(myTraining); dim(myTesting)
+myTraining$cvtd_timestamp<-as.Date(myTraining$cvtd_timestamp,'%d/%m/%Y %H:%M')
+myTesting$cvtd_timestamp<-as.Date(myTesting$cvtd_timestamp,'%d/%m/%Y %H:%M')
+```
+
+First , We now build a classification tree Model
+
+```{r code to build classification tree}
+set.seed(400)
+modFitCT<-train(classe~.,data = myTraining[,-c(1,2,3)],method="rpart")
+
+predCT<-predict(modFitCT,newdata = myTesting,method="class")
+confusionMatrix(predCT,myTesting$classe)
+
+fancyRpartPlot(modFitCT$finalModel,cex=.5,under.cex=1,shadow.offset=0)
+
+```
+
+
+Then , We build classification tree Model after centering and scaling and also using cross validation with 5 folds
+
+```{r code to build classification tree using cross validation}
+set.seed(400)
+
+tr_ctrl <- trainControl(method = "cv", number = 5)
+modFitCTCV<-train(classe~.,data = myTraining[,-c(1,2,3)],method="rpart",trControl = tr_ctrl,preProcess=c("center","scale"))
+
+predCTCV<-predict(modFitCTCV,newdata = myTesting,method="class")
+confusionMatrix(predCTCV,myTesting$classe)
+
+fancyRpartPlot(modFitCT$finalModel,cex=.5,under.cex=1,shadow.offset=0)
+
+```
+
+
+Now , we build random forest algorithm to this data and calculate the confusion matrix:-
+
+```{r code to build random forest model}
+set.seed(400)
+modFitRF<-randomForest(classe~.,data = myTraining)
+
+predRF<-predict(modFitRF,newdata = myTesting)
+confusionMatrix(predRF,myTesting$classe)
+```
+
+Finally , We now build a Random Forest Model after centering and scaling and also using cross validation with 5 folds
+
+```{r code to build random forest model with cross validation}
+set.seed(400)
+
+tr_ctrl <- trainControl(method = "cv", number = 5)
+modFitRFCV<-randomForest(classe~.,data = myTraining,trControl = tr_ctrl,preProcess=c("center","scale"))
+
+predRFCV<-predict(modFitRF,newdata = myTesting)
+confusionMatrix(predRFCV,myTesting$classe)
+```
+
+
+The out of model error rate for the above 4 models are as stated below:-
+
+1.Classification tree model `r a<-confusionMatrix(predCT,myTesting$classe)$table ; round(1-(a[1,1]+a[2,2]+a[3,3]+a[4,4]+a[5,5])/sum(a),3)`
+
+2.Classification tree Model with variables centered , scaled and appplying cross-validation `r a<-confusionMatrix(predCTCV,myTesting$classe)$table ; round(1-(a[1,1]+a[2,2]+a[3,3]+a[4,4]+a[5,5])/sum(a),3)`
+
+3.Randomforest model `r a<-confusionMatrix(predRF,myTesting$classe)$table ; round(1-(a[1,1]+a[2,2]+a[3,3]+a[4,4]+a[5,5])/sum(a),3)`
+
+
+4.Randomforest model with variables centered , scaled and appplying cross-validation `r a<-confusionMatrix(predRFCV,myTesting$classe)$table ; round(1-(a[1,1]+a[2,2]+a[3,3]+a[4,4]+a[5,5])/sum(a),3)`
+
+###Conclusion
+
+Thus we see that the randomForest model has the highest accuracy and lowest out of sample error rate of all of the models and we will use this for our final prediction in our test set.
